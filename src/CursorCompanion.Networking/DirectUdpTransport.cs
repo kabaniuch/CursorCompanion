@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using LiteNetLib;
 using CursorCompanion.Core;
 
@@ -5,6 +8,26 @@ namespace CursorCompanion.Networking;
 
 public class DirectUdpTransport : ITransport, INetEventListener
 {
+    /// <summary>Returns the first non-loopback IPv4 address (for display to user).</summary>
+    public static string? GetLocalIPv4()
+    {
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (var addr in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                        return addr.Address.ToString();
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private NetManager? _netManager;
     private NetPeer? _peer;
     private bool _isHost;
@@ -40,16 +63,20 @@ public class DirectUdpTransport : ITransport, INetEventListener
         remove => _onPeerDisconnected -= value;
     }
 
+    public string? HostAddress { get; private set; }
+
     public void Host(int port)
     {
         _isHost = true;
         _netManager = new NetManager(this)
         {
             AutoRecycle = true,
-            DisconnectTimeout = 10000
+            DisconnectTimeout = 15000,
+            IPv6Enabled = false
         };
         _netManager.Start(port);
-        Logger.Info($"Hosting on port {port}");
+        HostAddress = GetLocalIPv4();
+        Logger.Info($"Hosting on port {port}, local IP: {HostAddress ?? "unknown"}");
     }
 
     public void Connect(string ip, int port)
@@ -58,11 +85,12 @@ public class DirectUdpTransport : ITransport, INetEventListener
         _netManager = new NetManager(this)
         {
             AutoRecycle = true,
-            DisconnectTimeout = 10000
+            DisconnectTimeout = 15000,
+            IPv6Enabled = false
         };
         _netManager.Start();
         _netManager.Connect(ip, port, "CursorCompanion");
-        Logger.Info($"Connecting to {ip}:{port}");
+        Logger.Info($"Connecting to {ip}:{port} (local IP: {GetLocalIPv4() ?? "unknown"})");
     }
 
     public void Send(byte[] data)
@@ -130,21 +158,28 @@ public class DirectUdpTransport : ITransport, INetEventListener
         _onReceive?.Invoke(data);
     }
 
-    void INetEventListener.OnNetworkError(System.Net.IPEndPoint endPoint, System.Net.Sockets.SocketError socketError)
+    void INetEventListener.OnNetworkError(IPEndPoint endPoint, SocketError socketError)
     {
         Logger.Error($"Network error: {socketError} from {endPoint}");
     }
 
-    void INetEventListener.OnNetworkReceiveUnconnected(System.Net.IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
+    void INetEventListener.OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
     { }
 
     void INetEventListener.OnNetworkLatencyUpdate(NetPeer peer, int latency) { }
 
     void INetEventListener.OnConnectionRequest(ConnectionRequest request)
     {
+        Logger.Info($"Connection request from {request.RemoteEndPoint}");
         if (_isHost)
+        {
             request.AcceptIfKey("CursorCompanion");
+            Logger.Info("Connection request accepted");
+        }
         else
+        {
             request.Reject();
+            Logger.Info("Connection request rejected (not host)");
+        }
     }
 }

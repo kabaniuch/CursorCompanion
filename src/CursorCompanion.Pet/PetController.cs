@@ -59,6 +59,17 @@ public class PetController
 
     public event Action<string>? OnSysMenuAction;
 
+    // Status overlay (network diagnostics)
+    public string? StatusText { get; set; }
+    private float _statusTimer;
+    private const float StatusDisplayTime = 8f;
+
+    public void SetStatus(string text, float duration = 8f)
+    {
+        StatusText = text;
+        _statusTimer = StatusDisplayTime - duration; // counts up to StatusDisplayTime
+    }
+
     public PetController(WindowTracker windowTracker, TaskbarService taskbarService,
         SkiaRenderer renderer, LayeredWindow layeredWindow)
     {
@@ -278,6 +289,16 @@ public class PetController
         bool overSysMenu = _sysMenuVisible && GetSysMenuItemAt(localRtX, localRtY) != null;
         _layeredWindow.SetClickThrough(!overPet && !overMenu && !overSysMenu);
 
+        // Status overlay timer
+        if (StatusText != null)
+        {
+            _statusTimer += dt;
+            if (_statusTimer >= StatusDisplayTime)
+            {
+                StatusText = null;
+                _statusTimer = 0;
+            }
+        }
     }
 
     private int GetMenuButtonAt(int rtX, int rtY)
@@ -309,15 +330,15 @@ public class PetController
     private string? GetSysMenuItemAt(int rtX, int rtY)
     {
         var items = GetSysMenuItems();
-        int startY = _renderOffsetY + _spriteHeight + 8;
-        int centerX = _renderer.Width / 2;
-        int itemX = centerX - SysMenuItemWidth / 2;
+        int btnY = _renderOffsetY + _spriteHeight + 8;
+        int totalWidth = items.Length * (SysMenuItemWidth + SysMenuItemGap) - SysMenuItemGap;
+        int startX = (_renderer.Width - totalWidth) / 2;
 
         for (int i = 0; i < items.Length; i++)
         {
-            int itemY = startY + i * (SysMenuItemHeight + SysMenuItemGap);
+            int itemX = startX + i * (SysMenuItemWidth + SysMenuItemGap);
             if (rtX >= itemX && rtX <= itemX + SysMenuItemWidth &&
-                rtY >= itemY && rtY <= itemY + SysMenuItemHeight)
+                rtY >= btnY && rtY <= btnY + SysMenuItemHeight)
             {
                 return items[i].ToLowerInvariant();
             }
@@ -380,17 +401,17 @@ public class PetController
             }
         }
 
-        // Draw system menu items
+        // Draw system menu items (horizontal)
         if (_sysMenuVisible && _renderer.Canvas != null)
         {
             var items = GetSysMenuItems();
-            int startY = _renderOffsetY + _spriteHeight + 8;
-            int centerX = _renderer.Width / 2;
-            int itemX = centerX - SysMenuItemWidth / 2;
+            int btnY = _renderOffsetY + _spriteHeight + 8;
+            int totalWidth = items.Length * (SysMenuItemWidth + SysMenuItemGap) - SysMenuItemGap;
+            int startX = (_renderer.Width - totalWidth) / 2;
 
             for (int i = 0; i < items.Length; i++)
             {
-                int itemY = startY + i * (SysMenuItemHeight + SysMenuItemGap);
+                int itemX = startX + i * (SysMenuItemWidth + SysMenuItemGap);
 
                 using var bgPaint = new SKPaint
                 {
@@ -398,7 +419,7 @@ public class PetController
                     IsAntialias = true,
                     Style = SKPaintStyle.Fill
                 };
-                var rect = new SKRect(itemX, itemY, itemX + SysMenuItemWidth, itemY + SysMenuItemHeight);
+                var rect = new SKRect(itemX, btnY, itemX + SysMenuItemWidth, btnY + SysMenuItemHeight);
                 _renderer.Canvas.DrawRoundRect(rect, 8, 8, bgPaint);
 
                 using var textPaint = new SKPaint
@@ -409,9 +430,39 @@ public class PetController
                     TextAlign = SKTextAlign.Center,
                     IsStroke = false
                 };
-                float textY = itemY + SysMenuItemHeight / 2f + 5f;
-                _renderer.Canvas.DrawText(items[i], centerX, textY, textPaint);
+                float textY = btnY + SysMenuItemHeight / 2f + 5f;
+                _renderer.Canvas.DrawText(items[i], itemX + SysMenuItemWidth / 2f, textY, textPaint);
             }
+        }
+
+        // Draw status overlay
+        if (StatusText != null && _renderer.Canvas != null)
+        {
+            int centerX = _renderer.Width / 2;
+            int textY = _renderOffsetY - 8;
+
+            using var bgPaint = new SKPaint
+            {
+                Color = new SKColor(0x00, 0x00, 0x00, 0xBB),
+                IsAntialias = true,
+                Style = SKPaintStyle.Fill
+            };
+            using var textPaint = new SKPaint
+            {
+                Color = SKColors.LimeGreen,
+                IsAntialias = true,
+                TextSize = 11,
+                TextAlign = SKTextAlign.Center,
+                IsStroke = false
+            };
+
+            float textWidth = textPaint.MeasureText(StatusText);
+            float pad = 6;
+            var bgRect = new SKRect(
+                centerX - textWidth / 2 - pad, textY - 12,
+                centerX + textWidth / 2 + pad, textY + 4);
+            _renderer.Canvas.DrawRoundRect(bgRect, 4, 4, bgPaint);
+            _renderer.Canvas.DrawText(StatusText, centerX, textY, textPaint);
         }
 
         // Copy to layered window; window position accounts for render offset

@@ -71,6 +71,7 @@ public class SpriteAtlas
                     Clips[clip.Name] = clip;
             }
 
+            StripBlackBackground();
             Logger.Info($"Loaded atlas: {Bitmap.Width}x{Bitmap.Height}, {Clips.Count} clips");
             return true;
         }
@@ -79,6 +80,46 @@ public class SpriteAtlas
             Logger.Error("Failed to load atlas", ex);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Replaces pure-black pixels (R,G,B all &lt; 2) with fully transparent.
+    /// Handles atlas PNGs that have a black background instead of alpha.
+    /// </summary>
+    private unsafe void StripBlackBackground()
+    {
+        if (Bitmap == null) return;
+
+        // Ensure BGRA format for direct pixel manipulation
+        if (Bitmap.ColorType != SKColorType.Bgra8888)
+        {
+            var converted = new SKBitmap(Bitmap.Width, Bitmap.Height,
+                SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var canvas = new SKCanvas(converted);
+            canvas.DrawBitmap(Bitmap, 0, 0);
+            Bitmap.Dispose();
+            Bitmap = converted;
+        }
+
+        var pixels = Bitmap.GetPixels();
+        int count = Bitmap.Width * Bitmap.Height;
+        var ptr = (uint*)pixels.ToPointer();
+        int stripped = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            uint bgra = ptr[i];
+            byte b = (byte)(bgra);
+            byte g = (byte)(bgra >> 8);
+            byte r = (byte)(bgra >> 16);
+            if (r < 2 && g < 2 && b < 2)
+            {
+                ptr[i] = 0; // fully transparent
+                stripped++;
+            }
+        }
+
+        Logger.Info($"Stripped {stripped} near-black pixels to transparent");
     }
 
     public void LoadPlaceholder(int frameSize = 64)

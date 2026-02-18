@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private SkiaRenderer? _remoteRenderer;
     private RemotePetController? _remotePet;
 
+    private int _windowSize; // computed from sprite dimensions
     private int _topmostCounter;
     private const int TopmostRefreshInterval = 120; // every 2 seconds at 60fps
 
@@ -51,26 +52,7 @@ public partial class MainWindow : Window
         // Load config
         _config = AppConfig.Load();
 
-        // Get HWND
-        var helper = new WindowInteropHelper(this);
-        var hwnd = helper.Handle;
-
-        // Initialize layered window
-        _layeredWindow = new LayeredWindow();
-        _layeredWindow.Initialize(hwnd, _config.WindowWidth, _config.WindowHeight);
-
-        // Initialize window tracker and taskbar
-        _windowTracker = new WindowTracker();
-        _windowTracker.Initialize(hwnd);
-
-        _taskbarService = new TaskbarService();
-        _taskbarService.Refresh();
-
-        // Initialize renderer
-        _renderer = new SkiaRenderer();
-        _renderer.Initialize(_config.WindowWidth, _config.WindowHeight);
-
-        // Load sprite atlas
+        // Load sprite atlas FIRST to determine window size
         _atlas = new SpriteAtlas();
         var assetsDir = Path.Combine(baseDir, "assets");
         var atlasPng = Path.Combine(assetsDir, "atlas.png");
@@ -90,6 +72,40 @@ public partial class MainWindow : Window
             _atlas.LoadPlaceholder();
         }
 
+        // Determine window size from sprite dimensions
+        int spriteW = 64, spriteH = 64;
+        if (_atlas.Clips.Count > 0)
+        {
+            var firstClip = _atlas.Clips.Values.First();
+            if (firstClip.Frames.Count > 0)
+            {
+                spriteW = firstClip.Frames[0].W;
+                spriteH = firstClip.Frames[0].H;
+            }
+        }
+        _windowSize = Math.Max(_config.WindowWidth,
+            Math.Max(spriteW, spriteH) + 180);
+        Logger.Info($"Sprite: {spriteW}x{spriteH}, window: {_windowSize}x{_windowSize}");
+
+        // Get HWND
+        var helper = new WindowInteropHelper(this);
+        var hwnd = helper.Handle;
+
+        // Initialize layered window (sized to fit sprite + menus)
+        _layeredWindow = new LayeredWindow();
+        _layeredWindow.Initialize(hwnd, _windowSize, _windowSize);
+
+        // Initialize window tracker and taskbar
+        _windowTracker = new WindowTracker();
+        _windowTracker.Initialize(hwnd);
+
+        _taskbarService = new TaskbarService();
+        _taskbarService.Refresh();
+
+        // Initialize renderer
+        _renderer = new SkiaRenderer();
+        _renderer.Initialize(_windowSize, _windowSize);
+
         // Initialize action pack service
         _actionPackService = new ActionPackService();
         var actionsJson = Path.Combine(assetsDir, "actions.json");
@@ -102,7 +118,7 @@ public partial class MainWindow : Window
 
         // Initialize pet
         _pet = new PetController(_windowTracker, _taskbarService, _renderer, _layeredWindow);
-        int startX = Win32.GetSystemMetrics(Win32.SM_CXSCREEN) / 2 - _config.WindowWidth / 2;
+        int startX = Win32.GetSystemMetrics(Win32.SM_CXSCREEN) / 2 - _windowSize / 2;
         _pet.Initialize(_atlas, startX, 0);
 
         // Wire hotkey to action
@@ -129,7 +145,9 @@ public partial class MainWindow : Window
                     WireTransportEvents();
                     _pet.NetworkState = 1;
                     _trayIcon.SetNetworkState(hosting: true, connected: false);
-                    Logger.Info("Hosting started (via pet menu)");
+                    var hostIp = _transport.HostAddress ?? "?";
+                    _pet.SetStatus($"Hosting: {hostIp}:{_config.NetworkPort}", 30f);
+                    Logger.Info($"Hosting started on {hostIp}:{_config.NetworkPort} (via pet menu)");
                     break;
 
                 case "connect":
@@ -143,6 +161,7 @@ public partial class MainWindow : Window
                             WireTransportEvents();
                             _pet.NetworkState = 2;
                             _trayIcon.SetNetworkState(hosting: false, connected: true);
+                            _pet.SetStatus($"Connecting to {dialog.IpAddress}...", 15f);
                             Logger.Info($"Connecting to {dialog.IpAddress} (via pet menu)");
                         }
                     });
@@ -154,6 +173,7 @@ public partial class MainWindow : Window
                     DestroyRemotePet();
                     _pet.NetworkState = 0;
                     _trayIcon.SetNetworkState(hosting: false, connected: false);
+                    _pet.SetStatus("Disconnected", 5f);
                     Logger.Info("Disconnected (via pet menu)");
                     break;
 
@@ -173,7 +193,9 @@ public partial class MainWindow : Window
                 _transport.Host(_config.NetworkPort);
                 WireTransportEvents();
                 _trayIcon.SetNetworkState(hosting: true, connected: false);
-                Logger.Info("Hosting started");
+                var ip2 = _transport.HostAddress ?? "?";
+                _pet.SetStatus($"Hosting: {ip2}:{_config.NetworkPort}", 30f);
+                Logger.Info($"Hosting started on {ip2}:{_config.NetworkPort}");
             },
             onConnect: ip =>
             {
@@ -181,6 +203,7 @@ public partial class MainWindow : Window
                 _transport.Connect(ip, _config.NetworkPort);
                 WireTransportEvents();
                 _trayIcon.SetNetworkState(hosting: false, connected: true);
+                _pet.SetStatus($"Connecting to {ip}...", 15f);
                 Logger.Info($"Connecting to {ip}");
             },
             onDisconnect: () =>
@@ -189,6 +212,7 @@ public partial class MainWindow : Window
                 _transport = null;
                 DestroyRemotePet();
                 _trayIcon.SetNetworkState(hosting: false, connected: false);
+                _pet.SetStatus("Disconnected", 5f);
                 Logger.Info("Disconnected");
             }
         );
@@ -256,12 +280,14 @@ public partial class MainWindow : Window
         t.OnPeerConnected += () =>
         {
             Dispatcher.Invoke(() => CreateRemotePet());
+            _pet.SetStatus("Peer connected!", 5f);
             Logger.Info("Remote pet connected");
         };
 
         t.OnPeerDisconnected += () =>
         {
             Dispatcher.Invoke(() => DestroyRemotePet());
+            _pet.SetStatus("Peer disconnected", 5f);
             Logger.Info("Remote pet disconnected");
         };
     }
@@ -284,10 +310,10 @@ public partial class MainWindow : Window
         var remoteHwnd = new WindowInteropHelper(_remoteWpfWindow).EnsureHandle();
 
         _remoteLayeredWindow = new LayeredWindow();
-        _remoteLayeredWindow.Initialize(remoteHwnd, _config.WindowWidth, _config.WindowHeight);
+        _remoteLayeredWindow.Initialize(remoteHwnd, _windowSize, _windowSize);
 
         _remoteRenderer = new SkiaRenderer();
-        _remoteRenderer.Initialize(_config.WindowWidth, _config.WindowHeight);
+        _remoteRenderer.Initialize(_windowSize, _windowSize);
 
         _remotePet = new RemotePetController(_windowTracker, _taskbarService,
             _remoteRenderer, _remoteLayeredWindow, _atlas);
