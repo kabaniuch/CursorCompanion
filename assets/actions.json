@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "id": "scratch",
+      "name": "Scratch",
+      "clipName": "Scratch",
+      "soundFile": null,
+      "cooldownOverride": null
+    },
+    {
+      "id": "roar",
+      "name": "Roar",
+      "clipName": "Roar",
+      "soundFile": null,
+      "cooldownOverride": null
+    },
+    {
+      "id": "pawwave",
+      "name": "Paw Wave",
+      "clipName": "PawWave",
+      "soundFile": null,
+      "cooldownOverride": null
+    },
+    {
+      "id": "shake",
+      "name": "Shake",
+      "clipName": "Shake",
+      "soundFile": null,
+      "cooldownOverride": null
+    },
+    {
+      "id": "sitpose",
+      "name": "Sit Pose",
+      "clipName": "SitPose",
+      "soundFile": null,
+      "cooldownOverride": null
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CursorCompanion.Core\CursorCompanion.Core.csproj" />
+    <ProjectReference Include="..\CursorCompanion.Windowing\CursorCompanion.Windowing.csproj" />
+    <ProjectReference Include="..\CursorCompanion.Rendering\CursorCompanion.Rendering.csproj" />
+    <ProjectReference Include="..\CursorCompanion.Pet\CursorCompanion.Pet.csproj" />
+    <ProjectReference Include="..\CursorCompanion.Actions\CursorCompanion.Actions.csproj" />
+    <ProjectReference Include="..\CursorCompanion.Networking\CursorCompanion.Networking.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\assets\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="assets" />
+  </ItemGroup>
+</Project>

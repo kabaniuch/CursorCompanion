@@ -1,0 +1,9 @@
+{
+  "packs": [
+    {
+      "id": "default",
+      "name": "Default",
+      "actionIds": ["scratch", "roar", "pawwave", "shake", "sitpose"]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "windowWidth": 256,
+  "windowHeight": 256,
+  "gravity": 4000,
+  "terminalVelocity": 3000,
+  "globalCooldown": 3,
+  "sleepTimeout": 90,
+  "networkPort": 7777,
+  "volume": 0.5,
+  "activePack": "default",
+  "atlasPath": "",
+  "atlasJsonPath": ""
+}
